@@ -31,12 +31,20 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 
+#ifdef HAVE_OPENGLES
+#include "renderer/gles_compat.h"
+#endif
+
 /*
 =====================
 RB_BakeTextureMatrixIntoTexgen
 =====================
 */
+#ifdef HAVE_OPENGLES
+void RB_BakeTextureMatrixIntoTexgen( idMat4 & lightProject, const float *textureMatrix ) {
+#else
 void RB_BakeTextureMatrixIntoTexgen( idPlane lightProject[3], const float *textureMatrix ) {
+#endif
 	float	genMatrix[16];
 	float	final[16];
 
@@ -72,6 +80,8 @@ void RB_BakeTextureMatrixIntoTexgen( idPlane lightProject[3], const float *textu
 	lightProject[1][2] = final[9];
 	lightProject[1][3] = final[13];
 }
+
+#ifndef HAVE_OPENGLES
 
 /*
 ================
@@ -1697,3 +1707,43 @@ void	RB_STD_DrawView( void ) {
 	RB_RenderDebugTools( drawSurfs, numDrawSurfs );
 
 }
+
+#else
+
+/*
+=============
+RB_STD_DrawView
+=============
+*/
+void RB_STD_DrawView(void) {
+  drawSurf_t **drawSurfs = (drawSurf_t * *) & backEnd.viewDef->drawSurfs[0];
+  const int numDrawSurfs = backEnd.viewDef->numDrawSurfs;
+
+  // clear the z buffer, set the projection matrix, etc
+  RB_BeginDrawingView();
+
+  // Setup GLSL shader state
+  RB_GLSL_PrepareShaders();
+
+  // fill the depth buffer and clear color buffer to black except on subviews
+	RB_GLSL_FillDepthBuffer( drawSurfs, numDrawSurfs );
+
+  // main light renderer
+  RB_GLSL_DrawInteractions();
+
+  // disable stencil shadow test
+  qglStencilFunc(GL_ALWAYS, 128, 255);
+
+  // now draw any non-light dependent shading passes
+  const int processed = RB_GLSL_DrawShaderPasses(drawSurfs, numDrawSurfs);
+
+  // fog and blend lights
+  RB_GLSL_FogAllLights();
+
+  // now draw any post-processing effects using _currentRender
+  if (processed < numDrawSurfs) {
+    RB_GLSL_DrawShaderPasses(drawSurfs + processed, numDrawSurfs - processed);
+  }
+}
+
+#endif

@@ -33,6 +33,10 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/Image.h"
 
+#ifdef HAVE_OPENGLES
+#include "renderer/gles_compat.h"
+#endif
+
 #include "framework/GameCallbacks_local.h"
 
 const char *imageFilter[] = {
@@ -370,9 +374,11 @@ static void R_BorderClampImage( idImage *image ) {
 		return;
 	}
 	// explicit zero border
+#ifndef HAVE_OPENGLES
 	float	color[4];
 	color[0] = color[1] = color[2] = color[3] = 0;
 	qglTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color );
+#endif
 }
 
 static void R_RGBA8Image( idImage *image ) {
@@ -1011,9 +1017,11 @@ static const filterName_t textureFilters[] = {
 		if ( glConfig.anisotropicAvailable ) {
 			qglTexParameterf(texEnum, GL_TEXTURE_MAX_ANISOTROPY_EXT, globalImages->textureAnisotropy );
 		}
+#ifndef HAVE_OPENGLES
 		if ( glConfig.textureLODBiasAvailable ) {
 			qglTexParameterf(texEnum, GL_TEXTURE_LOD_BIAS_EXT, globalImages->textureLODBias );
 		}
+#endif
 	}
 }
 
@@ -1203,10 +1211,13 @@ void R_ListImages_f( const idCmdArgs &args ) {
 		image = globalImages->images[ i ];
 
 		if ( uncompressedOnly ) {
-			if ( ( image->internalFormat >= GL_COMPRESSED_RGB_S3TC_DXT1_EXT && image->internalFormat <= GL_COMPRESSED_RGBA_S3TC_DXT5_EXT )
-				|| image->internalFormat == GL_COLOR_INDEX8_EXT ) {
+			bool isCompressed = ( image->internalFormat >= GL_COMPRESSED_RGB_S3TC_DXT1_EXT &&
+				image->internalFormat <= GL_COMPRESSED_RGBA_S3TC_DXT5_EXT );
+#ifndef HAVE_OPENGLES
+			isCompressed = isCompressed || ( image->internalFormat == GL_COLOR_INDEX8_EXT );
+#endif
+			if (isCompressed)
 				continue;
-			}
 		}
 
 		if ( matchTag && image->classification != matchTag ) {
@@ -1402,6 +1413,7 @@ void idImageManager::SetNormalPalette( void ) {
 		return;
 	}
 
+#ifndef HAVE_OPENGLES
 	qglColorTableEXT( GL_SHARED_TEXTURE_PALETTE_EXT,
 					   GL_RGB,
 					   256,
@@ -1410,6 +1422,7 @@ void idImageManager::SetNormalPalette( void ) {
 					   temptable );
 
 	qglEnable( GL_SHARED_TEXTURE_PALETTE_EXT );
+#endif
 }
 
 /*
@@ -1939,6 +1952,15 @@ void idImageManager::BindNull() {
 
 	tmu = &backEnd.glState.tmu[backEnd.glState.currenttmu];
 
+#ifdef HAVE_OPENGLES
+	if ( tmu->textureType == TT_CUBIC ) {
+		glBindTexture( GL_TEXTURE_CUBE_MAP, 0 );
+	} else if ( tmu->textureType == TT_3D ) {
+		// GL_TEXTURE_3D is not in core GLES2; nothing to unbind.
+	} else if ( tmu->textureType == TT_2D ) {
+		glBindTexture( GL_TEXTURE_2D, 0 );
+	}
+#else
 	if ( tmu->textureType == TT_CUBIC ) {
 		qglDisable( GL_TEXTURE_CUBE_MAP_EXT );
 	} else if ( tmu->textureType == TT_3D ) {
@@ -1946,6 +1968,7 @@ void idImageManager::BindNull() {
 	} else if ( tmu->textureType == TT_2D ) {
 		qglDisable( GL_TEXTURE_2D );
 	}
+#endif
 	tmu->textureType = TT_DISABLED;
 }
 

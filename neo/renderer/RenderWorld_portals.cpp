@@ -33,6 +33,10 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 
+#ifdef HAVE_OPENGLES
+#include "renderer/gles_compat.h"
+#endif
+
 /*
 
 
@@ -768,6 +772,9 @@ if more than one portal sees into the area
 ===================
 */
 void idRenderWorldLocal::AddAreaRefs( int areaNum, const portalStack_t *ps ) {
+#ifdef HAVE_OPENGLES
+    return; // immediate-mode GL not available on GLES2
+#endif
 	// mark the viewCount, so r_showPortals can display the
 	// considered portals
 	portalAreas[ areaNum ].viewCount = tr.viewCount;

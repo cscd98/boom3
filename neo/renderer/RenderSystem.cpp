@@ -38,6 +38,10 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 
+#ifdef HAVE_OPENGLES
+#include "renderer/gles_compat.h"
+#endif
+
 idRenderSystemLocal	tr;
 idRenderSystem	*renderSystem = &tr;
 

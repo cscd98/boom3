@@ -47,6 +47,10 @@ If you have questions concerning this license or the applicable additional terms
 #include "sys/win32/win_local.h"
 #endif
 
+#ifdef HAVE_OPENGLES
+#include "renderer/gles_compat.h"
+#endif
+
 // functions that are not called every frame
 
 glconfig_t	glConfig;
@@ -63,6 +67,11 @@ idCVar r_customWidth( "r_customWidth", "720", CVAR_RENDERER | CVAR_ARCHIVE | CVA
 idCVar r_customHeight( "r_customHeight", "486", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "custom screen height. set r_mode to -1 to activate" );
 idCVar r_singleTriangle( "r_singleTriangle", "0", CVAR_RENDERER | CVAR_BOOL, "only draw a single triangle per primitive" );
 idCVar r_checkBounds( "r_checkBounds", "0", CVAR_RENDERER | CVAR_BOOL, "compare all surface bounds with precalculated ones" );
+
+#ifdef HAVE_OPENGLES
+idCVar r_usePhong("r_usePhong", "1", CVAR_RENDERER | CVAR_BOOL, "use phong instead of blinn-phong shader for interactions" );
+idCVar r_specularExponent("r_specularExponent", "3", CVAR_RENDERER | CVAR_FLOAT, "specular exponent, to be used in GLSL shaders" );
+#endif
 
 idCVar r_useConstantMaterials( "r_useConstantMaterials", "1", CVAR_RENDERER | CVAR_BOOL, "use pre-calculated material registers if possible" );
 idCVar r_useSilRemap( "r_useSilRemap", "1", CVAR_RENDERER | CVAR_BOOL, "consider verts with the same XYZ, but different ST the same for shadows" );
@@ -226,6 +235,8 @@ idCVar r_debugRenderToTexture( "r_debugRenderToTexture", "0", CVAR_RENDERER | CV
 // DG: let users disable the "scale menus to 4:3" hack
 idCVar r_scaleMenusTo43( "r_scaleMenusTo43", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "Scale menus, fullscreen videos and PDA to 4:3 aspect ratio" );
 
+#ifndef HAVE_OPENGLES
+
 // define qgl functions
 #define QGLPROC(name, rettype, args) rettype (APIENTRYP q##name) args;
 #include "renderer/qgl_proc.h"
@@ -272,6 +283,8 @@ PFNGLPROGRAMLOCALPARAMETER4FVARBPROC	qglProgramLocalParameter4fvARB;
 // GL_EXT_depth_bounds_test
 PFNGLDEPTHBOUNDSEXTPROC                 qglDepthBoundsEXT;
 
+#endif // !HAVE_OPENGLES
+
 /*
 =================
 R_CheckExtension
@@ -294,6 +307,26 @@ R_CheckPortableExtensions
 ==================
 */
 static void R_CheckPortableExtensions( void ) {
+
+#ifdef HAVE_OPENGLES
+    glConfig.multitextureAvailable        = true;
+    glConfig.textureCompressionAvailable  = false; // set true if EXT_texture_compression_s3tc present
+    glConfig.anisotropicAvailable         = false;
+    glConfig.textureLODBiasAvailable      = false;
+    glConfig.cubeMapAvailable             = true;
+    glConfig.sharedTexturePaletteAvailable= false;
+    glConfig.ARBFragmentProgramAvailable  = false;
+    glConfig.ARBVertexBufferObjectAvailable = true;
+    glConfig.twoSidedStencilAvailable     = false;
+    glConfig.depthBoundsTestAvailable     = false;
+    qglGetIntegerv( GL_MAX_TEXTURE_IMAGE_UNITS, (GLint*)&glConfig.maxTextureImageUnits );
+    qglGetIntegerv( GL_MAX_TEXTURE_SIZE,        (GLint*)&glConfig.maxTextureSize );
+    glConfig.maxTextureUnits  = glConfig.maxTextureImageUnits;
+    glConfig.maxTextureCoords = glConfig.maxTextureImageUnits;
+    tr.stencilIncr = GL_INCR_WRAP;
+    tr.stencilDecr = GL_DECR_WRAP;
+#else
+
 	glConfig.glVersion = atof( glConfig.version_string );
 
 	// GL_ARB_multitexture
@@ -444,7 +477,7 @@ static void R_CheckPortableExtensions( void ) {
 	if ( glConfig.depthBoundsTestAvailable ) {
 		qglDepthBoundsEXT = (PFNGLDEPTHBOUNDSEXTPROC)GLimp_ExtensionPointer( "glDepthBoundsEXT" );
 	}
-
+#endif // !HAVE_OPENGLES
 }
 
 
@@ -668,6 +701,7 @@ void R_InitOpenGL( void ) {
 		r_multiSamples.SetInteger( 0 );
 	}
 
+#ifndef HAVE_OPENGLES
 // load qgl function pointers
 #define QGLPROC(name, rettype, args) \
 	q##name = (rettype(APIENTRYP)args)GLimp_ExtensionPointer(#name); \
@@ -675,6 +709,7 @@ void R_InitOpenGL( void ) {
 		common->FatalError("Unable to initialize OpenGL (%s)", #name);
 
 #include "renderer/qgl_proc.h"
+#endif
 
 	// input and sound systems need to be tied to the new window
 	Sys_InitInput();
@@ -704,12 +739,14 @@ void R_InitOpenGL( void ) {
 	// recheck all the extensions (FIXME: this might be dangerous)
 	R_CheckPortableExtensions();
 
+#ifndef HAVE_OPENGLES
 	// parse our vertex and fragment programs, possibly disably support for
 	// one of the paths if there was an error
 	R_ARB2_Init();
 
 	cmdSystem->AddCommand( "reloadARBprograms", R_ReloadARBPrograms_f, CMD_FL_RENDERER, "reloads ARB programs" );
 	R_ReloadARBPrograms_f( idCmdArgs() );
+#endif
 
 	// allocate the vertex array range or vertex objects
 	vertexCache.Init();
@@ -1400,6 +1437,11 @@ Save out a screenshot showing the stencil buffer expanded by 16x range
 ===============
 */
 void R_StencilShot( void ) {
+#ifdef HAVE_OPENGLES
+    // glReadPixels with GL_STENCIL_INDEX is not valid in core GLES2.
+    common->Printf( "R_StencilShot: not supported on GLES2\n" );
+    return;
+#endif
 	byte		*buffer;
 	int			i, c;
 
@@ -2141,7 +2183,9 @@ void idRenderSystemLocal::Shutdown( void ) {
 
 	R_ShutdownTriSurfData();
 
+#ifndef HAVE_OPENGLES
 	RB_ShutdownDebugTools();
+#endif
 
 	delete guiModel;
 	delete demoGuiModel;

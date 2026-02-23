@@ -1,5 +1,6 @@
 STATIC_LINKING := 0
 AR             := ar
+CORE           := -DCORE=ON
 
 ifneq ($(V),1)
    Q := @
@@ -137,6 +138,16 @@ else
    LDFLAGS += -lwsock32 -lws2_32
 endif
 
+# webOS
+ifneq (,$(or $(findstring webos,$(CROSS_COMPILE)),$(findstring starfish,$(CROSS_COMPILE))))
+   GLES = 1
+   # CORE is for OpenGL or GLES 3.x
+   CORE =
+   GL_LIB := -lGLESv2
+   CFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2
+   CXXFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2
+endif
+
 HAVE_OPENGL = 1
 
 LDFLAGS += $(LIBM)
@@ -196,7 +207,7 @@ endif
 
 TOPDIR ?= $(CURDIR)
 
-CFLAGS   += -Wall -D__LIBRETRO__ $(fpic) -DCORE=ON -DSDL2=ON -DBASE=ON -DUSE_FILE32API -ffast-math \
+CFLAGS   += -Wall -D__LIBRETRO__ $(fpic) $(CORE) -DSDL2=ON -DBASE=ON -DUSE_FILE32API -ffast-math \
 			-fno-unsafe-math-optimizations -fno-strict-aliasing -fvisibility=hidden -fomit-frame-pointer \
 			-Wno-sign-compare -Wno-switch -Wno-format-security -I$(TOPDIR) -I$(TOPDIR)/sys/libretro/config
 CXXFLAGS += -Wall -D__LIBRETRO__ $(fpic) -fpermissive -std=gnu++11

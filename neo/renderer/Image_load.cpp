@@ -32,6 +32,10 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/Image.h"
 
+#ifdef HAVE_OPENGLES
+#include "renderer/gles_compat.h"
+#endif
+
 /*
 PROBLEM: compressed textures may break the zero clamp rule!
 */
@@ -383,9 +387,11 @@ void idImage::SetImageFilterAndRepeat() const {
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1 );
 		}
 	}
+#ifndef HAVE_OPENGLES
 	if ( glConfig.textureLODBiasAvailable ) {
 		qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS_EXT, globalImages->textureLODBias );
 	}
+#endif
 
 	// set the wrap/clamp modes
 	switch( repeat ) {
@@ -660,7 +666,11 @@ void idImage::GenerateImage( const byte *pic, int width, int height,
 		*/
 		UploadCompressedNormalMap( scaled_width, scaled_height, scaledBuffer, 0 );
 	} else {
+#ifdef HAVE_OPENGLES
+		qglTexImage2D( GL_TEXTURE_2D, 0, GLES2_INTERNAL_FMT(internalFormat), scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer );
+#else
 		qglTexImage2D( GL_TEXTURE_2D, 0, internalFormat, scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer );
+#endif
 	}
 
 	// create and upload the mip map levels, which we do in all cases, even if we don't think they are needed
@@ -695,8 +705,13 @@ void idImage::GenerateImage( const byte *pic, int width, int height,
 		if ( internalFormat == GL_COLOR_INDEX8_EXT ) {
 			UploadCompressedNormalMap( scaled_width, scaled_height, scaledBuffer, miplevel );
 		} else {
+#ifdef HAVE_OPENGLES
+			qglTexImage2D( GL_TEXTURE_2D, miplevel, GLES2_INTERNAL_FMT(internalFormat), scaled_width, scaled_height,
+				0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer );
+#else
 			qglTexImage2D( GL_TEXTURE_2D, miplevel, internalFormat, scaled_width, scaled_height,
 				0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer );
+#endif
 		}
 	}
 
@@ -735,6 +750,12 @@ void idImage::Generate3DImage( const byte *pic, int width, int height, int picDe
 	if ( !glConfig.isInitialized ) {
 		return;
 	}
+
+#ifdef HAVE_OPENGLES
+	// 3D textures are not available in core GLES2.
+    common->Warning( "Generate3DImage: not supported on GLES2, skipping '%s'", imgName.c_str() );
+    return;
+#endif
 
 	// make sure it is a power of 2
 	scaled_width = MakePowerOfTwo( width );
@@ -921,8 +942,13 @@ void idImage::GenerateCubeImage( const byte *pic[6], int size,
 	// upload the base level
 	// FIXME: support GL_COLOR_INDEX8_EXT?
 	for ( i = 0 ; i < 6 ; i++ ) {
+#ifdef HAVE_OPENGLES
+		qglTexImage2D( GL_TEXTURE_CUBE_MAP_POSITIVE_X_EXT+i, 0, GLES2_INTERNAL_FMT(internalFormat), scaled_width, scaled_height, 0,
+			GL_RGBA, GL_UNSIGNED_BYTE, pic[i] );
+#else
 		qglTexImage2D( GL_TEXTURE_CUBE_MAP_POSITIVE_X_EXT+i, 0, internalFormat, scaled_width, scaled_height, 0,
 			GL_RGBA, GL_UNSIGNED_BYTE, pic[i] );
+#endif
 	}
 
 
@@ -1039,6 +1065,12 @@ void idImage::WritePrecompressedImage() {
 	if ( !glConfig.isInitialized ) {
 		return;
 	}
+
+#ifdef HAVE_OPENGLES
+    // glGetTexImage / glGetCompressedTexImage do not exist in GLES2.
+    // Precompressed DDS writing is a desktop build-time feature only.
+    return;
+#endif
 
 	char filename[MAX_IMAGE_NAME];
 	ImageProgramStringToCompressedFileName( imgName, filename );
@@ -1526,7 +1558,11 @@ void idImage::UploadPrecompressedImage( byte *data, int len ) {
 			if ( FormatIsDXT( internalFormat ) ) {
 				qglCompressedTexImage2DARB( GL_TEXTURE_2D, i - skipMip, internalFormat, uw, uh, 0, size, imagedata );
 			} else {
+#ifdef HAVE_OPENGLES
+				qglTexImage2D( GL_TEXTURE_2D, i - skipMip, GLES2_INTERNAL_FMT(internalFormat), uw, uh, 0, GLES2_INTERNAL_FMT(externalFormat), GL_UNSIGNED_BYTE, imagedata );
+#else
 				qglTexImage2D( GL_TEXTURE_2D, i - skipMip, internalFormat, uw, uh, 0, externalFormat, GL_UNSIGNED_BYTE, imagedata );
+#endif
 			}
 		}
 
@@ -1712,6 +1748,15 @@ void idImage::Bind() {
 
 	// enable or disable apropriate texture modes
 	if ( tmu->textureType != type && ( backEnd.glState.currenttmu <	glConfig.maxTextureUnits ) ) {
+#ifdef HAVE_OPENGLES
+		// GLES2: no glEnable/glDisable for texture targets — unbind old target.
+		if ( tmu->textureType == TT_CUBIC )
+			gles2_tex_disable( GL_TEXTURE_CUBE_MAP_EXT );
+		else if ( tmu->textureType == TT_2D )
+			gles2_tex_disable( GL_TEXTURE_2D );
+		// TT_3D: GL_TEXTURE_3D not core in GLES2; nothing to unbind.
+		// New target is activated by the glBindTexture call below.
+#else
 		if ( tmu->textureType == TT_CUBIC ) {
 			qglDisable( GL_TEXTURE_CUBE_MAP_EXT );
 		} else if ( tmu->textureType == TT_3D ) {
@@ -1720,6 +1765,7 @@ void idImage::Bind() {
 			qglDisable( GL_TEXTURE_2D );
 		}
 
+
 		if ( type == TT_CUBIC ) {
 			qglEnable( GL_TEXTURE_CUBE_MAP_EXT );
 		} else if ( type == TT_3D ) {
@@ -1727,6 +1773,7 @@ void idImage::Bind() {
 		} else if ( type == TT_2D ) {
 			qglEnable( GL_TEXTURE_2D );
 		}
+#endif
 		tmu->textureType = type;
 	}
 
@@ -1844,7 +1891,11 @@ void idImage::CopyFramebuffer( int x, int y, int imageWidth, int imageHeight, bo
 		uploadWidth = potWidth;
 		uploadHeight = potHeight;
 		if ( potWidth == imageWidth && potHeight == imageHeight ) {
+#ifdef HAVE_OPENGLES
+			qglCopyTexImage2D( GL_TEXTURE_2D, 0, GLES2_INTERNAL_FMT(GL_RGB8), x, y, imageWidth, imageHeight, 0 );
+#else
 			qglCopyTexImage2D( GL_TEXTURE_2D, 0, GL_RGB8, x, y, imageWidth, imageHeight, 0 );
+#endif
 		} else {
 			byte	*junk;
 			// we need to create a dummy image with power of two dimensions,
@@ -1952,8 +2003,13 @@ void idImage::UploadScratch( const byte *data, int cols, int rows ) {
 
 			// upload the base level
 			for ( i = 0 ; i < 6 ; i++ ) {
+#ifdef HAVE_OPENGLES
+				qglTexImage2D( GL_TEXTURE_CUBE_MAP_POSITIVE_X_EXT+i, 0, GLES2_INTERNAL_FMT(GL_RGB8), cols, rows, 0,
+				GL_RGBA, GL_UNSIGNED_BYTE, data + cols*rows*4*i );
+#else
 				qglTexImage2D( GL_TEXTURE_CUBE_MAP_POSITIVE_X_EXT+i, 0, GL_RGB8, cols, rows, 0,
 					GL_RGBA, GL_UNSIGNED_BYTE, data + cols*rows*4*i );
+#endif
 			}
 		} else {
 			// otherwise, just subimage upload it so that drivers can tell we are going to be changing

@@ -33,8 +33,8 @@ If you have questions concerning this license or the applicable additional terms
 #define __QGL_H__
 
 #if defined( ID_DEDICATED ) && defined( _WIN32 )
-// to allow stubbing gl on windows, define WINGDIAPI to nothing - it would otherwise be
-// extended to __declspec(dllimport) on MSVC (our stub is no dll.)
+// to allow stubbing gl on windows, define WINGDIAPI to nothing - it would
+// otherwise be extended to __declspec(dllimport) on MSVC (our stub is no dll.)
 	#ifdef WINGDIAPI
 		#pragma push_macro("WINGDIAPI")
 		#undef WINGDIAPI
@@ -42,12 +42,53 @@ If you have questions concerning this license or the applicable additional terms
 	#endif
 #endif
 
-#ifdef __SWITCH__
-#include <EGL/egl.h>
-#include "glad41/glad.h"
+// ---------------------------------------------------------------------------
+// GL / GLES header selection
+//
+// rglgen_private_headers.h already handles the full cascade:
+//   HAVE_OPENGLES3  -> GLES3/gl3.h + GLES2/gl2ext.h
+//   HAVE_OPENGLES2  -> GLES2/gl2.h + GLES2/gl2ext.h
+//   HAVE_OPENGLES1  -> GLES/gl.h   + GLES/glext.h
+//   (none)          -> GL/gl.h     + GL/glext.h  (desktop)
+//
+// For the libretro build we always go through that header so that
+// the same logic applies consistently everywhere.
+// ---------------------------------------------------------------------------
+#ifdef __LIBRETRO__
+#  include "../sys/libretro-common/include/glsym/rglgen_private_headers.h"
 #else
-#include <GL/gl.h>
-#include "glsym/glsym.h"
+#  ifdef __SWITCH__
+#    include <EGL/egl.h>
+#    include "glad41/glad.h"
+#  else
+#    include <GL/gl.h>
+#    include "glsym/glsym.h"
+#  endif
+#endif
+
+// ---------------------------------------------------------------------------
+// APIENTRYP / APIENTRY compatibility shim
+//
+// On desktop GL, <GL/gl.h> defines APIENTRY (and therefore APIENTRYP) via
+// <windows.h> on Win32 or as empty on POSIX.
+// GLES2 headers define GL_APIENTRY / GL_APIENTRYP instead.
+// Provide fallback definitions so the QGLPROC macro and function pointer
+// declarations below compile under both environments.
+// ---------------------------------------------------------------------------
+#ifndef APIENTRY
+#  ifdef GL_APIENTRY
+#    define APIENTRY GL_APIENTRY
+#  else
+#    define APIENTRY
+#  endif
+#endif
+
+#ifndef APIENTRYP
+#  ifdef GL_APIENTRYP
+#    define APIENTRYP GL_APIENTRYP
+#  else
+#    define APIENTRYP APIENTRY *
+#  endif
 #endif
 
 #if defined( ID_DEDICATED ) && defined( _WIN32 )
@@ -69,6 +110,16 @@ GLExtension_t GLimp_ExtensionPointer( const char *name );
 	}
 #endif
 
+// ---------------------------------------------------------------------------
+// Fixed-function GL 1.x wrapper table (qgl_proc.h) and desktop-only
+// extension function pointers.
+//
+// None of these exist in GLES2/GLES3.  The GLES renderer (draw_gles2.cpp)
+// calls the real GL ES functions directly and does not go through the qgl*
+// indirection layer.  Guard the entire block so GLES builds don't see it.
+// ---------------------------------------------------------------------------
+#ifndef HAVE_OPENGLES
+
 // declare qgl functions
 #define QGLPROC(name, rettype, args) extern rettype (APIENTRYP q##name) args;
 #include "renderer/qgl_proc.h"
@@ -80,17 +131,17 @@ extern	void ( APIENTRY * qglActiveTextureARB )( GLenum texture );
 extern	void ( APIENTRY * qglClientActiveTextureARB )( GLenum texture );
 
 // ARB_vertex_buffer_object
-extern PFNGLBINDBUFFERARBPROC qglBindBufferARB;
-extern PFNGLDELETEBUFFERSARBPROC qglDeleteBuffersARB;
-extern PFNGLGENBUFFERSARBPROC qglGenBuffersARB;
-extern PFNGLISBUFFERARBPROC qglIsBufferARB;
-extern PFNGLBUFFERDATAARBPROC qglBufferDataARB;
-extern PFNGLBUFFERSUBDATAARBPROC qglBufferSubDataARB;
-extern PFNGLGETBUFFERSUBDATAARBPROC qglGetBufferSubDataARB;
-extern PFNGLMAPBUFFERARBPROC qglMapBufferARB;
-extern PFNGLUNMAPBUFFERARBPROC qglUnmapBufferARB;
+extern PFNGLBINDBUFFERARBPROC           qglBindBufferARB;
+extern PFNGLDELETEBUFFERSARBPROC        qglDeleteBuffersARB;
+extern PFNGLGENBUFFERSARBPROC           qglGenBuffersARB;
+extern PFNGLISBUFFERARBPROC             qglIsBufferARB;
+extern PFNGLBUFFERDATAARBPROC           qglBufferDataARB;
+extern PFNGLBUFFERSUBDATAARBPROC        qglBufferSubDataARB;
+extern PFNGLGETBUFFERSUBDATAARBPROC     qglGetBufferSubDataARB;
+extern PFNGLMAPBUFFERARBPROC            qglMapBufferARB;
+extern PFNGLUNMAPBUFFERARBPROC          qglUnmapBufferARB;
 extern PFNGLGETBUFFERPARAMETERIVARBPROC qglGetBufferParameterivARB;
-extern PFNGLGETBUFFERPOINTERVARBPROC qglGetBufferPointervARB;
+extern PFNGLGETBUFFERPOINTERVARBPROC    qglGetBufferPointervARB;
 
 // 3D textures
 extern void ( APIENTRY *qglTexImage3D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const GLvoid *);
@@ -118,6 +169,11 @@ extern PFNGLPROGRAMLOCALPARAMETER4FVARBPROC	qglProgramLocalParameter4fvARB;
 // GL_EXT_depth_bounds_test
 extern PFNGLDEPTHBOUNDSEXTPROC              qglDepthBoundsEXT;
 
+#endif // !HAVE_OPENGLES
+
+// ---------------------------------------------------------------------------
+// Windows-only WGL declarations (desktop only, no GLES equivalent)
+// ---------------------------------------------------------------------------
 #if defined( _WIN32 ) && defined(ID_ALLOW_TOOLS)
 
 extern  int   (WINAPI * qwglChoosePixelFormat)(HDC, CONST PIXELFORMATDESCRIPTOR *);
@@ -151,4 +207,4 @@ extern BOOL(WINAPI * qwglSwapLayerBuffers)(HDC, UINT);
 
 #endif	// _WIN32 && ID_ALLOW_TOOLS
 
-#endif
+#endif // __QGL_H__
