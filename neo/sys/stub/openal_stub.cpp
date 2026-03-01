@@ -145,4 +145,7 @@ AL_API void AL_APIENTRY alSourceUnqueueBuffers( ALuint sid, ALsizei numEntries, 
 AL_API void AL_APIENTRY alSourcePlay( ALuint sid ) { }
 AL_API void AL_APIENTRY alSourcePause( ALuint source ) {}
 
+int idSoundSystemLocal::AsyncUpdate( int inTime ) { return 0; }
+int idSoundSystemLocal::AsyncUpdateWrite( int inTime ) { return 0; }
+
 } // extern "C"
