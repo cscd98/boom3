@@ -26,6 +26,11 @@ If you have questions concerning this license or the applicable additional terms
 ===========================================================================
 */
 
+#ifdef _WIN32
+#define AL_API
+#define ALC_API
+#endif
+
 #include "sys/platform.h"
 
 #include "sound/snd_local.h"

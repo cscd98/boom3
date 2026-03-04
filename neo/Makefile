@@ -23,6 +23,8 @@ ifeq ($(shell uname -a),)
    platform = win
 else ifneq ($(findstring MINGW,$(shell uname -a)),)
    platform = win
+else ifneq (,$(findstring mingw,$(CXX)))
+   platform = win
 else ifneq ($(findstring Darwin,$(shell uname -a)),)
    platform = osx
 else ifneq ($(findstring win,$(shell uname -a)),)
@@ -156,11 +158,15 @@ else ifneq (,$(findstring android,$(platform)))
       endif
    endif
 else
+# Windows
    CC ?= gcc
    TARGET := $(TARGET_NAME)_libretro.dll
    SHARED := -shared -static-libgcc -static-libstdc++ -s -Wl,--version-script=$(CORE_DIR)/link.T -Wl,--no-undefined
-	GL_LIB := -lopengl32
+   GL_LIB := -lopengl32
    LDFLAGS += -lwsock32 -lws2_32
+   LIBS :=
+   CFLAGS += -DAL_LIBTYPE_STATIC -DALC_LIBTYPE_STATIC
+   CXXFLAGS += -DAL_LIBTYPE_STATIC -DALC_LIBTYPE_STATIC
 endif
 
 # 1. If CROSS_COMPILE is set, derive COMPILE_ARCH from it
@@ -244,6 +250,8 @@ endif
 ifeq ($(platform), osx)
     D3_OSTYPE := macosx
 else ifeq ($(platform), win)
+    D3_OSTYPE := windows
+else ifneq (,$(findstring mingw,$(CXX)))
     D3_OSTYPE := windows
 else ifneq (,$(findstring ios,$(platform)))
     D3_OSTYPE := ios
