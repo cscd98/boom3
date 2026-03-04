@@ -135,6 +135,26 @@ else ifeq ($(platform), libnx)
     CFLAGS	+= -march=armv8-a -mtune=cortex-a57 -mtp=soft -mcpu=cortex-a57+crc+fp+simd
     CXXFLAGS := $(ASFLAGS) $(CFLAGS) -std=gnu++11
     STATIC_LINKING = 1
+else ifneq (,$(findstring android,$(platform)))
+   TARGET := $(TARGET_NAME)_libretro_android.so
+   fpic := -fPIC
+   SHARED := -shared -Wl,--version-script=$(CORE_DIR)/link.T -Wl,--no-undefined
+   LIBS := -ldl
+   GL_LIB := -lGLESv2
+   CFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2
+   CXXFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2
+   LDFLAGS += -static-libstdc++
+   CORE =
+   GLES = 1
+   ifeq ($(origin CC), default)
+      ifneq ($(ANDROID_NDK_LLVM),)
+        NDK_BIN := $(ANDROID_NDK_LLVM)/bin
+        API := 21
+        TARGET_TRIPLE := aarch64-linux-android
+        CC  := $(NDK_BIN)/$(TARGET_TRIPLE)$(API)-clang
+        CXX := $(NDK_BIN)/$(TARGET_TRIPLE)$(API)-clang++
+      endif
+   endif
 else
    CC ?= gcc
    TARGET := $(TARGET_NAME)_libretro.dll
@@ -149,7 +169,14 @@ ifneq ($(strip $(CROSS_COMPILE)),)
     COMPILE_ARCH := $(firstword $(subst -, ,$(CROSS_COMPILE)))
 endif
 
-# 2. If COMPILE_ARCH is still empty, detect from uname -m
+# 2. If platform is android, derive from CC instead
+ifeq ($(strip $(COMPILE_ARCH)),)
+ifneq (,$(findstring android,$(platform)))
+    COMPILE_ARCH := $(firstword $(subst -, ,$(notdir $(CC))))
+endif
+endif
+
+# 3. If COMPILE_ARCH is still empty, detect from uname -m
 ifeq ($(strip $(COMPILE_ARCH)),)
     COMPILE_ARCH := $(shell uname -m | sed -e 's/i.86/x86/' -e 's/amd64/x86_64/' -e 's/x64/x86_64/' -e 's/powerpc$$/ppc/' -e 's/powerpc64/ppc64/' -e 's/aarch64/arm64/')
 endif
