@@ -1116,6 +1116,17 @@ Parms will typically be allocated with R_FrameAlloc
 */
 void R_RenderViewInternal( viewDef_t *parms );
 
+#if defined(LIBRETRO) && defined(BOOM3_VR)
+static bool R_IsPlayerViewForVR( const viewDef_t *parms ) {
+	return VR_Active()
+		&& tr.viewDef == NULL && !parms->isSubview
+		&& parms->renderView.viewID >= 0
+		&& parms->renderView.x == 0 && parms->renderView.y == 0
+		&& parms->renderView.width == SCREEN_WIDTH
+		&& parms->renderView.height == SCREEN_HEIGHT;
+}
+#endif
+
 void R_RenderView( viewDef_t *parms ) {
 	{
 		extern void R_ParticleLightSubmit( viewDef_t * );
