@@ -165,8 +165,8 @@ else ifneq (,$(findstring android,$(platform)))
    SHARED := -shared -Wl,--version-script=$(CORE_DIR)/link.T -Wl,--no-undefined
    LIBS := -ldl
    GL_LIB := -lGLESv2
-   CFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2
-   CXXFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2
+   CFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2 -DLIBRETRO -DBOOM3_VR
+   CXXFLAGS += -DHAVE_OPENGLES -DHAVE_OPENGLES2 -DLIBRETRO -DBOOM3_VR
    LDFLAGS += -static-libstdc++
    CORE =
    GLES = 1
